@@ -44,8 +44,6 @@ global {
 	
 	int nb_hasAcc <- 0 update:road count(each.hasAcc = 1);
 	
-	int nb_stoppedCars <- people count(each.speed = 0) update: people count(each.speed = 0);
-	
 	init {  
 		create roadNode from: shape_file_nodes 
 		with:[is_traffic_signal::(string(read("type")) = "traffic_signals")];
@@ -183,6 +181,8 @@ experiment traffic_simulation type: gui {
 		ask n_modified_roads among road {
 			do add_weight;
 		}
+		do recompute_path;
+		
 		write string(n_modified_roads)+" roads modified!";
 		write "Time: "+string(time);
 	}
@@ -233,11 +233,6 @@ experiment traffic_simulation type: gui {
 		display nb_hasAcc{
 			chart "Nombre de routes accidentées" type: series{
 				data "routes" value: nb_hasAcc color: #red;
-			}
-		}
-		display nb_stoppedCars{
-			chart "Nombre de voitures arrêtées" type: series{
-				data "voitures" value: nb_stoppedCars color: #red;
 			}
 		}
 	}
