@@ -18,6 +18,14 @@ global {
 	float car_length <- 3 #m;
 	float weight <- 100000.0;
 	float waze_percentage <- 0.5;
+	
+	date starting_date <- date("2022-03-22-00-00-00");
+	int min_day_start <- 6;
+    int max_day_start <- 8;
+    int min_day_end <- 16; 
+    int max_day_end <- 20;
+    float step <- 30 #mn;
+    
 	int nb_waze <- int(nb_people*waze_percentage);
 	map general_speed_map;
 	
@@ -95,6 +103,10 @@ global {
 			proba_use_linked_road <- 0.0;
 			max_acceleration <- rnd(0.5,1.0);
 			speed_coeff <- rnd(0.8,1.2);
+			
+			start_day <- rnd (min_day_start, max_day_start);
+        	end_day <- rnd(min_day_end, max_day_end);
+        	
 		}	
 		ask nb_waze among people{
 				hasWaze <- true;
@@ -156,6 +168,10 @@ species people skills: [advanced_driving] {
 	rgb color <- rgb("orange");
 	roadNode target;
 	
+	int start_day;
+    int end_day;
+    
+	
 	reflex time_to_go when: final_target = nil {
 		target <- one_of(roadNode);
 		current_path <- compute_path(graph: road_network, target: target);
@@ -194,6 +210,12 @@ experiment traffic_simulation type: gui {
 	parameter "weight to add in the graph" var: weight;
 	parameter "Nb accidents to add" var: n_accidents;
 	
+	action show_time{
+		write string(current_date);
+		write "Time: "+string(time);
+	}
+	
+	
 	action add_n_road_accidents{
 		ask n_modified_roads among road {
 			do add_accident;
@@ -221,6 +243,7 @@ experiment traffic_simulation type: gui {
 	user_command cmd_add_n_road_accidents action: add_n_road_accidents;
 	user_command cmd_recompute_path action:recompute_path;
 	user_command cmd_add_n_accidents action:add_n_accidents;
+	user_command cmd_show_date action:show_time;
 	
 	output {
 		display city_display type: opengl{
