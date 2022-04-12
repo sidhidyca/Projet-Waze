@@ -217,6 +217,7 @@ species road skills: [skill_road] {
 	geometry geom_display;
 	string oneway;
 	int hasAcc;
+	int time_to_restart;
 
 	aspect default {
 		if (display3D) {
@@ -224,12 +225,18 @@ species road skills: [skill_road] {
 		} else {
 			draw shape color: #white end_arrow: 5;
 		}
-		
 	}
 	
 	action add_accident{
-		hasAcc <- 1;
+		hasAcc <- hasAcc + 1;
 		maxspeed <- 0.0;
+	}
+	
+	action remove_accident{
+		hasAcc <- hasAcc - 1;
+		if(hasAcc = 0){
+			maxspeed <- (lanes = 1 ? 30.0 : (lanes = 2 ? 50.0 : 70.0)) °km / °h;
+		}
 	}
 
 }
@@ -241,6 +248,7 @@ species people skills: [advanced_driving] {
 	int counter_stucked <- 0;
 	int threshold_stucked;
 	intersection target;
+	int time_to_restart <- 0;
 
 	reflex time_to_go when: final_target = nil {
 		target <- one_of(intersection );
@@ -295,8 +303,24 @@ species people skills: [advanced_driving] {
 	action accident{
 		color <- rgb("black");
 		speed_coeff <- 0.0;
-		road(current_road).hasAcc <- 1; 
+		time_to_restart <- rnd(1,100);
+		//road(current_road): do add_accident;		
 	}
+	
+	action restart_car{
+		color <- hasWaze ? rgb("blue") : rgb("orange");
+		speed_coeff <- 1.2 - (rnd(400) / 1000);
+		//road(current_road): do remove_accident;		
+	}
+	
+	reflex dynamic when: time_to_restart > 0 {
+		time_to_restart <- time_to_restart - 1;
+		if(time_to_restart = 0) {
+			do restart_car;
+		}
+	}
+	
+	
 	
 }
 
