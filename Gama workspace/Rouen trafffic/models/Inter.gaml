@@ -1,22 +1,29 @@
 /**
- *  RoadTrafficComplex
- *  Author: patricktaillandier
- *  Description: 
- */
- 
-model RoadTrafficComplex
- 
+* Name: Simple
+* Based on the internal empty template. 
+* Author: chris
+* Tags: 
+*/
+
+
+model Simple
+
+/* Insert your model definition here */
+
+
 global {   
-	file shape_file_roads  <- file("../includes/roads.shp") ;
-	file shape_file_nodes  <- file("../includes/nodes.shp");
+	file shape_file_roads  <- file("../includes/Inter/roads.shp") ;
+	file shape_file_nodes  <- file("../includes/Inter/nodes.shp");
 	geometry shape <- envelope(shape_file_roads);
 	
 	graph road_network;
-	int nb_people <- 8000;
+	int nb_people <- 5;
 	int n_modified_roads <- 1;
 	int n_accidents <- 1;
 	float car_length <- 3 #m;
-	float weight_added <- 100000.0;
+	float weight <- 100000.0;
+	float waze_percentage <- 1.0;
+	int nb_waze <- int(nb_people*waze_percentage);
 	map general_speed_map;
 	
 	float prob_car0 <- 1/nb_people
@@ -44,9 +51,13 @@ global {
 	
 	int nb_hasAcc <- 0 update:road count(each.hasAcc = 1);
 	
+	int nb_stoppedCars_W <- people count(each.real_speed <= 0.1 and each.hasWaze) update: people count(each.real_speed <= 0.1 and each.hasWaze);
+	int nb_stoppedCars_R <- people count(each.real_speed <= 0.1 and not(each.hasWaze)) update: people count(each.real_speed <= 0.1 and not(each.hasWaze));
+	
 	init {  
 		create roadNode from: shape_file_nodes 
-		with:[is_traffic_signal::(string(read("type")) = "traffic_signals")];
+		with:[is_traffic_signal::(string(read("type")) = "traffic_signals")
+		];
 		ask roadNode where each.is_traffic_signal {
 			stop << flip(0.5) ? roads_in : [] ;
 		}
@@ -61,9 +72,10 @@ global {
 						shape <- polyline(reverse(myself.shape.points));
 						maxspeed <- myself.maxspeed;
 						geom_display  <- myself.geom_display;
-						linked_road <- myself;
+						linked_road <- myself;	
 						myself.linked_road <- self;
 						hasAcc <- 0;
+						weightAdded <- 0;
 					}
 				}
 				match "-1" {
@@ -74,14 +86,14 @@ global {
 		general_speed_map <- road as_map (each::(each.shape.perimeter / (each.maxspeed)));
 		road_network <-  (as_driving_graph(road, roadNode))  with_weights general_speed_map;
 		write "number of roads : "+length(road);
-		
+		write "number of noad roads : "+length(roadNode);
 		create people number: nb_people { 
 			speed <- 30 #km /#h ;
 			vehicle_length <- car_length;
 			right_side_driving <- true;
 			proba_lane_change_up <- rnd(1.0);
 			proba_lane_change_down <- rnd(0.5,1.0);
-			location <- one_of(roadNode where empty(each.stop)).location;
+			location <- one_of(roadNode).location;
 			security_distance_coeff <- rnd(1.0,3.0);
 			proba_respect_priorities <- rnd(0.8,1.0);
 			proba_respect_stops <- [rnd(0.998,1.0)];
@@ -89,7 +101,11 @@ global {
 			proba_use_linked_road <- 0.0;
 			max_acceleration <- rnd(0.5,1.0);
 			speed_coeff <- rnd(0.8,1.2);
-		}		
+		}	
+		ask nb_waze among people{
+				hasWaze <- true;
+				color <- rgb("blue");
+		} 	
 	}
 		
 } 
@@ -116,6 +132,7 @@ species roadNode skills: [skill_road_node] {
 
 species road skills: [skill_road] { 
 	int hasAcc;
+	int weightAdded;
 	string oneway;
 	geometry geom_display;
 	float car_coeff update: (people at_distance 6#m count(each.speed < 0.5*self.maxspeed))/20;
@@ -128,7 +145,11 @@ species road skills: [skill_road] {
 	}
 	
 	action add_weight{
-		put weight_added key:self in: general_speed_map;
+		put weight key:self in: general_speed_map;
+		weightAdded <- 1;
+	}
+	
+	action add_accident{
 		hasAcc <- 1;
 		maxspeed <- 0.0;
 	}
@@ -137,7 +158,8 @@ species road skills: [skill_road] {
 }
 	
 species people skills: [advanced_driving] { 
-	rgb color <- rnd_color(255);
+	bool hasWaze ;
+	rgb color <- rgb("orange");
 	roadNode target;
 	
 	reflex time_to_go when: final_target = nil {
@@ -145,8 +167,21 @@ species people skills: [advanced_driving] {
 		current_path <- compute_path(graph: road_network, target: target);
 	}
 	reflex move when: final_target != nil {
+		// write(current_path);
 		do drive;
 	}
+	
+	reflex is_at_node when: location  = current_target{
+		if (current_path.vertices[current_index+1]!=target) {
+			write "yes";
+			list<path> var0 <- paths_between(road_network, current_path.vertices[current_index+1]::target, 2); // var0 equals the 2 shortest paths (ordered by length) between ag1 and ag2
+			write var0;
+			if (length(var0) =2 ){
+        	current_path <- var0[rnd(0,1)];
+        	write current_path;
+    		}
+		}
+    }
 	
 	aspect car3D {
 		if (current_road) != nil {
@@ -167,6 +202,7 @@ species people skills: [advanced_driving] {
 	}	
 	
 	action accident{
+		color <- rgb("black");
 		speed_coeff <- 0.0;
 		road(current_road).hasAcc <- 1; 
 	}
@@ -174,16 +210,14 @@ species people skills: [advanced_driving] {
 } 
 
 experiment traffic_simulation type: gui {
-	parameter "Nb road to modify" var: n_modified_roads;
-	parameter "weight to add in the graph" var: weight_added;
+	//parameter "Nb road to modify" var: n_modified_roads;
+	parameter "weight to add in the graph" var: weight;
 	parameter "Nb accidents to add" var: n_accidents;
 	
-	action add_weight_n_roads{
+	action add_n_road_accidents{
 		ask n_modified_roads among road {
-			do add_weight;
+			do add_accident;
 		}
-		do recompute_path;
-		
 		write string(n_modified_roads)+" roads modified!";
 		write "Time: "+string(time);
 	}
@@ -195,16 +229,19 @@ experiment traffic_simulation type: gui {
 	}
 	
 	action recompute_path{
+		ask road where (each.hasAcc=1 and each.weightAdded=0){
+			do add_weight;
+		}
 		road_network <- road_network with_weights general_speed_map;
-		ask people{
-			current_path <- compute_path(graph: road_network, target: target);
+		ask people where (each.hasWaze){
+			// current_path <- compute_path(graph: road_network, target: target);
+			
 		}
 	}
 	
-	user_command cmd_add_weight_n_roads action: add_weight_n_roads;
+	//user_command cmd_add_n_road_accidents action: add_n_road_accidents;
 	user_command cmd_recompute_path action:recompute_path;
 	user_command cmd_add_n_accidents action:add_n_accidents;
-	
 	output {
 		display city_display type: opengl{
 			species road aspect: geom;
@@ -231,9 +268,10 @@ experiment traffic_simulation type: gui {
 				data "gini index" value: gini_index color: #red;
 			}
 		}
-		display nb_hasAcc{
-			chart "Nombre de routes accidentées" type: series{
-				data "routes" value: nb_hasAcc color: #red;
+		display nb_stoppedCars{
+			chart "Nombre de voitures arrêtées" type: series{
+				data "voitures avec Waze" value: nb_stoppedCars_W color: #blue;
+				data "voitures sans Waze" value: nb_stoppedCars_R color: #orange;
 			}
 		}
 	}
